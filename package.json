@@ -1,0 +1,32 @@
+{
+  "name": "SDC-Reviews-API",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "start:dev": "npx nodemon server/index.js -w server",
+    "test": "node_modules/jest/bin/jest.js spec/ --collectCoverage=true"
+  },
+  "author": "Meagan Provencher",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=4.0.0"
+  },
+  "devDependencies": {
+    "eslint-config-hackreactor": "git://github.com/reactorcore/eslint-config-hackreactor.git",
+    "jest": "^26.6.3"
+  },
+  "dependencies": {
+    "axios": "^0.21.0",
+    "bluebird": "^3.7.2",
+    "cors": "^2.8.5",
+    "eslint": "^7.29.0",
+    "express": "^4.17.1",
+    "nodemon": "^2.0.7",
+    "pg-promise": "^10.10.2",
+    "pg": "^8.6.0",
+    "supertest": "^6.1.3",
+    "underscore": "^1.13.1"
+  }
+}
