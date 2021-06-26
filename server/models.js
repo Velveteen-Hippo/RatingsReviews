@@ -4,7 +4,8 @@ const db = require('../db');
 module.exports = {
   getAllReviews: (page, count, sort, product_id, callback) => {
 
-    var queryStr = 'SELECT * FROM reviews_photos WHERE reviews_photos.product_id=? AND reviews_photos.id>=? AND reviews.id<=? AND reviews_photos.review_id=reviews.id ORDER BY ?';
+    var queryStr = 'SELECT * FROM reviews_photos\ WHERE reviews_photos.product_id=? \
+    AND reviews_photos.id>=? AND reviews.id<=? AND reviews_photos.review_id=reviews.id ORDER BY ?';
     var queryParams = [product_id, startingIndex, endingIndex, sortParam];
     db.query(queryStr, queryParams)
 
@@ -38,6 +39,7 @@ module.exports = {
             "reviewer_name": review.reviewer_name,
             "helpfulness": review.helpfulness,
             "photos": photos
+          }
           })
 
         var data = {
@@ -51,7 +53,7 @@ module.exports = {
         callback(null, data);
       })
       .catch((err) => {
-        callback((err, null)
+        callback((err, null));
       })
   },
   getAllMeta: (product_id, callback) => {
@@ -61,12 +63,12 @@ module.exports = {
     var data = {};
 
     //Find Ratings/Recommended
-    var queryStr = 'SELECT rating, recommended FROM reviews WHERE product_id=? ORDER BY rating';
+    var queryStr = 'SELECT rating, COUNT(rating), recommended, COUNT(recommended) FROM reviews WHERE product_id=? GROUP BYORDER BY rating';
     var queryParams = [product_id];
     db.query(queryStr, queryParams)
       .then((results) => {
         results.forEach((review) => {
-          if (ratings.hasOwnProperty(review.rating)) { ratings[review.rating]++; }
+          if (!ratings.hasOwnProperty(review.rating)) { ratings[review.rating]++; }
           else { ratings[review.rating] = 1; }
 
           if (recommended.hasOwnProperty(review.recommend)) { recommended[review.recommended]++; }
@@ -75,24 +77,13 @@ module.exports = {
         })
 
         //Find Characteristics
-        var queryStr = 'SELECT characteristics.product_id, characteristics.id, characteristic_reviews.characteristic_id, characteristics.name, characteristic_reviews.value  FROM characteristics, characteristic_reviews WHERE characteristics.product_id=? AND characteristics.id=characteristic_reviews.characteristic_id';
+        var queryStr = 'SELECT characteristics.product_id, characteristics.id, characteristic_reviews.characteristic_id, characteristics.name, AVG(characteristic_reviews.value)  FROM characteristics, characteristic_reviews WHERE characteristics.product_id=? AND characteristics.id=characteristic_reviews.characteristic_id GROUP BY characteristics.name';
         var queryParams = [product_id];
         db.query(queryStr, queryParams)
           .then((results) => {
-            var chars = { names: [] }
-            results.forEach((charObj) => {
-              if (chars.hasOwnProperty(charObj.name)) {
-                chars[charObj.name] += charObj.value;
-                chars[`${charObj.name}Count`] += 1;
-              } else {
-                chars.names.push({ name: charObj.name, id: charObj.id });
-                chars[charObj.name] = charObj.value;
-                chars[`${charObj.name}Count`] = 1;
-              }
-            })
             var characteristics = {};
-            chars.names.forEach((nameObj) => {
-              characteristics[nameObj.name] = { id: nameObj.id, value: (chars[nameObj.name] / chars[`${nameObj.name}Count`]) };
+            results.forEach((queryObj) => {
+              characteristics[queryObj.name] = { id: queryObj.id, value: queryObj.value };
             })
             data = { product_id, ratings, recommended, characteristics }
             callback(null, data)
@@ -122,7 +113,7 @@ module.exports = {
         callback(null, results);
       })
       .catch((err) => {
-        callback((err, null)
+        callback((err, null))
       })
   },
   updateHelpfulness: (review_id, callback) => {
@@ -133,7 +124,7 @@ module.exports = {
         callback(null, results);
       })
       .catch((err) => {
-        callback((err, null)
+        callback((err, null))
       })
   },
   reportReview: (review_id, callback) => {
@@ -144,7 +135,7 @@ module.exports = {
         callback(null, results);
       })
       .catch((err) => {
-        callback((err, null)
+        callback((err, null))
       })
   }
 }
