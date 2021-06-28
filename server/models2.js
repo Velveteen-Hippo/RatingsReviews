@@ -9,18 +9,22 @@ module.exports = {
     var sortParam = '';
     if (sort === "helpful") { sortParam = sort; };
     if (sort === "newest") { sortParam = "date"; };
-    if (sort === "relevant") { sortParam = "rating" }
+    if (sort === "relevant") { sortParam = "helpfulness, date" }
     var queryStr = '\
     SELECT\
-    reviews.id AS review_id \
+    reviews.id AS review_id,\
     reviews.rating, reviews.summary, reviews.recommend, reviews.response, reviews.body, reviews.date, reviews.reviewer_name, reviews.helpfulness,\
-    jsonb_agg(to_jsonb(reviews_photos) - review_id) AS photos\
-    FROM reviews LEFT JOIN reviews_photos ON reviews.id=reviews_photos.review_id\
-    LIMIT ? OFFSET ?\
-    WHERE reviews.product_id=?\
-    ORDER BY ?';
+    jsonb_agg(photo) AS photos\
+    FROM\
+	  (SELECT reviews_photos.id, reviews_photos.url FROM reviews_photos, reviews WHERE reviews_photos.review_id=reviews.id AND reviews.product_id=18078) AS photo,\
+	  reviews LEFT JOIN reviews_photos ON reviews.id=reviews_photos.review_id\
+ 	  WHERE reviews.product_id=?\
+	  GROUP BY reviews.id\
+    ORDER BY ?\
+    LIMIT ? OFFSET ?
+    ';
     //still have issue of dupe review enterites for multiple photos
-    var queryParams = [count, startingIndex, product_id, sortParam];
+    var queryParams = [product_id, sortParam, count, startingIndex];
     db.query(queryStr, queryParams)
       .then((results) => {
         var data = {
@@ -55,7 +59,7 @@ module.exports = {
         AND reviews.id=characteristic_reviews.review_id\
         AND characteristics.id=characteristic_reviews.characteristic_id\
     ';
-    var queryParams = [product_id];
+    var queryParams = [product_id, product_id];
     db.query(queryStr, queryParams)
       .then((results) => {
         callback(null, results)
@@ -75,12 +79,19 @@ module.exports = {
     var queryParams = [review.product_id, review.rating, review.summary, review.body, review.recommend, review.reviewer_name, review.reviewer_email, review.response];
     db.query(queryStr, queryParams)
       .then((results) => {
+        var review_id = results.id;
         review.photos.forEach((photoObj) => {
           var queryStr = `INSERT INTO reviews_photos (review_id, url) VALUES (?, ?)`;
-          var queryParams = [results.review_id, review];
+          var queryParams = [review_id, photoObj.url];
           db.query(queryStr, queryParams)
         })
-        reviews.characteristics
+        var keys = Object.keys(review.characteristics);
+        keys.forEach((key) => {
+          var queryStr = `INSERT INTO characteristics_reviews(characteristic_id, review_id, value) VALUES (?, ?, ?);\
+          INSERT INTO characteristics(id, product_id) VALUES (?,?)`;
+          var queryParams = [key, review_id, review.characteristics[key].value, key product_id];
+          db.query(queryStr, queryParams)
+        })
         callback(null, results);
       })
       .catch((err) => {

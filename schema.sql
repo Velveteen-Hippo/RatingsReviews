@@ -61,3 +61,5 @@ COPY  reviews_photos FROM  '/csvs/reviews_photos.csv' WITH delimiter ','  CSV HE
 
 ALTER TABLE  reviews
   ALTER COLUMN date TYPE TIMESTAMP USING to_timestamp(date / 1000) + ((date % 1000) || ' milliseconds') :: INTERVAL;
+
+ALTER SEQUENCE reviews_id_seq RESTART WITH 5774953;
