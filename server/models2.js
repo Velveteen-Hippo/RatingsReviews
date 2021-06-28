@@ -10,19 +10,39 @@ module.exports = {
     if (sort === "helpful") { sortParam = sort; };
     if (sort === "newest") { sortParam = "date"; };
     if (sort === "relevant") { sortParam = "helpfulness, date" }
-    var queryStr = '\
+    var queryStr = `\
     SELECT\
     reviews.id AS review_id,\
-    reviews.rating, reviews.summary, reviews.recommend, reviews.response, reviews.body, reviews.date, reviews.reviewer_name, reviews.helpfulness,\
-    jsonb_agg(photo) AS photos\
-    FROM\
-	  (SELECT reviews_photos.id, reviews_photos.url FROM reviews_photos, reviews WHERE reviews_photos.review_id=reviews.id AND reviews.product_id=18078) AS photo,\
-	  reviews LEFT JOIN reviews_photos ON reviews.id=reviews_photos.review_id\
- 	  WHERE reviews.product_id=?\
-	  GROUP BY reviews.id\
-    ORDER BY ?\
-    LIMIT ? OFFSET ?
-    ';
+    reviews.rating, \
+    reviews.summary, \
+    reviews.recommend,\
+    reviews.response, \
+    reviews.body, \
+    reviews.date, \
+    reviews.reviewer_name, \
+    reviews.helpfulness,\
+    photo.photos\
+  FROM\
+    reviews \
+  LEFT JOIN \
+    (\
+      SELECT \
+        reviews_photos.review_id as review_id,\
+        jsonb_agg(json_build_object('id', reviews_photos.id, 'value', reviews_photos.url)) AS photos\
+      FROM \
+        reviews_photos\
+      GROUP BY \
+        reviews_photos.review_id \
+    ) AS photo \
+  ON \
+    reviews.id=photo.review_id\
+ 	WHERE\
+    reviews.product_id=?\
+	GROUP BY\
+    reviews.id,\
+	photo.photos\
+  ORDER BY ?\
+  LIMIT ? OFFSET ?`;
     //still have issue of dupe review enterites for multiple photos
     var queryParams = [product_id, sortParam, count, startingIndex];
     db.query(queryStr, queryParams)
@@ -40,26 +60,25 @@ module.exports = {
       })
   },
   getAllMeta: (product_id, callback) => {
-    var data = {};
-
     //Find Ratings/Recommended
     //Find Characteristics
-    var queryStr = '\
+    var queryStr = `\
     SELECT\
-        jsonb_object_agg(reviews.rating, sumratings.rating) AS ratings,\
-        jsonb_object_agg(reviews.recommend, countrecommend.count) AS recommended,\
-		jsonb_object_agg(characteristics.name, charObj) AS characteristics\
+        reviews.product_id,
+        jsonb_object_agg(sumratings.rating, sumratings.count) AS ratings,\
+        jsonb_object_agg(countrecommend.recommend, countrecommend.count) AS recommended,\
+		jsonb_object_agg(charObj.name, json_build_object(charObj.id, charObj.value))\
         FROM \
-		reviews, characteristics, characteristic_reviews,\
-		(SELECT count(reviews.rating) AS rating FROM reviews WHERE reviews.product_id=18078) AS sumratings,\
-		(SELECT count(reviews.recommend) FROM reviews WHERE reviews.product_id=18078 GROUP BY reviews.recommend) AS countrecommend,\
-		(SELECT characteristics.id AS id, AVG(characteristic_reviews.value) AS value FROM characteristics, characteristic_reviews, reviews WHERE characteristics.id=characteristic_reviews.characteristic_id AND characteristics.product_id=18078 GROUP BY characteristics.id) AS charObj\
-		WHERE characteristics.product_id=?\
-        AND reviews.product_id=?\
-        AND reviews.id=characteristic_reviews.review_id\
-        AND characteristics.id=characteristic_reviews.characteristic_id\
-    ';
-    var queryParams = [product_id, product_id];
+		reviews, characteristics, characteristic_reviews, \
+		(SELECT reviews.rating, count(reviews.rating) AS count FROM reviews WHERE reviews.product_id=18078 GROUP BY reviews.rating) AS sumratings, \
+		(SELECT reviews.recommend, count(reviews.recommend) FROM reviews WHERE reviews.product_id=18078 GROUP BY reviews.recommend) AS countrecommend, \
+		(SELECT characteristics.id AS id, characteristics.name, AVG(characteristic_reviews.value) AS value FROM characteristics, characteristic_reviews, reviews WHERE characteristics.id=characteristic_reviews.characteristic_id AND characteristics.product_id=? GROUP BY characteristics.id) AS charObj \
+		WHERE characteristics.product_id=? \
+        AND reviews.product_id=? \
+        AND reviews.id=characteristic_reviews.review_id \
+        AND characteristics.id=characteristic_reviews.characteristic_id \
+    `;
+    var queryParams = [product_id, product_id, product_id];
     db.query(queryStr, queryParams)
       .then((results) => {
         callback(null, results)
