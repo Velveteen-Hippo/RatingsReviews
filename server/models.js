@@ -3,11 +3,15 @@ const db = require('../db');
 
 module.exports = {
   getAllReviews: (page, count, sort, product_id, callback) => {
+
+    var offset = '';
     //pull review info
-    var startingIndex = count * page;
+    if (page !== 1) {
+      offset = `OFFSET ${count * (page - 1)};`
+    }
 
     var sortParam = '';
-    if (sort === "helpful") { sortParam = sort; };
+    if (sort === "helpful") { sortParam = "helpfulness"; };
     if (sort === "newest") { sortParam = "date"; };
     if (sort === "relevant") { sortParam = "helpfulness, date" }
     var queryStr = `\
@@ -42,7 +46,7 @@ module.exports = {
     reviews.id,\
 	photo.photos\
   ORDER BY ${sortParam}\
-  LIMIT ${count} OFFSET ${startingIndex}`;
+  LIMIT ${count} ${offset}`;
     //still have issue of dupe review enterites for multiple photos
     db.query(queryStr)
       .then((results) => {
@@ -50,7 +54,7 @@ module.exports = {
           "product": product_id,
           "page": page,
           "count": count,
-          "results": results
+          "results": results.rows
         }
         callback(null, data);
       })
@@ -93,17 +97,17 @@ module.exports = {
     //use review_id to add photos and chars
 
     var columns = '(product_id, rating, summary, body, recommend, reviewer_name, reviewer_email, response)'
-    var queryStr = `INSERT INTO reviews ${columns} VALUES (${review.product_id}, ${review.rating}, ${review.summary}, ${review.body}, ${review.recommend}, ${review.reviewer_name}, ${review.reviewer_email}, ${review.response})`;
+    var queryStr = `INSERT INTO reviews ${columns} VALUES (${review.product_id}, ${review.rating}, ${review.summary}, ${review.body}, ${review.recommend}, ${review.reviewer_name}, ${review.reviewer_email}, ${review.response}) RETURNING id`;
     db.query(queryStr)
       .then((results) => {
-        var review_id = results.id;
+        var review_id = results.rows[0].id;
         review.photos.forEach((photoObj) => {
           var queryStr = `INSERT INTO reviews_photos (review_id, url) VALUES (${review_id}, ${photoObj.url})`;
           db.query(queryStr)
         })
         var keys = Object.keys(review.characteristics);
         keys.forEach((key) => {
-          var queryStr = `INSERT INTO characteristics_reviews(characteristic_id, review_id, value) VALUES (?, ?, ?);\
+          var queryStr = `INSERT INTO characteristics_reviews(characteristic_id, review_id, value) VALUES ($1, $2, $3);\
           INSERT INTO characteristics(id, product_id) VALUES (?,?)`;
           var queryParams = [key, review_id, review.characteristics[key].value, key, product_id];
           db.query(queryStr, queryParams)

@@ -63,3 +63,5 @@ ALTER TABLE  reviews
   ALTER COLUMN date TYPE TIMESTAMP USING to_timestamp(date / 1000) + ((date % 1000) || ' milliseconds') :: INTERVAL;
 
 ALTER SEQUENCE reviews_id_seq RESTART WITH 5774953;
+
+ALTER SEQUENCE characteristics_id_seq RESTART WITH 3347680;

@@ -23,7 +23,7 @@ app.get('/reviews/meta', (req, res) => {
     if (err) {
       console.log('S: get/reviews getAllMeta err: ', err);
     } else {
-      res.status(200).send(results)
+      res.status(200).send(results.rows[0])
     }
   })
 })
@@ -50,6 +50,7 @@ app.post('/reviews', (req, res) => {
 })
 
 app.put('/reviews/:review_id/helpful', (req, res) => {
+  console.log('LOOK --->' , req.params.review_id)
   models.updateHelpfulness(req.params.review_id, (err, results) => {
     if (err) {
       console.log('S: get/reviews updateHelpfulness err: ', err);
