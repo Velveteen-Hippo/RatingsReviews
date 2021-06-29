@@ -1,4 +1,4 @@
-const {Client} = require('pg');
+const { Client } = require('pg');
 const psqlConfig = require('./config.js');
 const client = new Client(psqlConfig);
 

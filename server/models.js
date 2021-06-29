@@ -3,52 +3,54 @@ const db = require('../db');
 
 module.exports = {
   getAllReviews: (page, count, sort, product_id, callback) => {
-
-    var queryStr = 'SELECT * FROM reviews_photos\ WHERE reviews_photos.product_id=? \
-    AND reviews_photos.id>=? AND reviews.id<=? AND reviews_photos.review_id=reviews.id ORDER BY ?';
-    var queryParams = [product_id, startingIndex, endingIndex, sortParam];
-    db.query(queryStr, queryParams)
-
-
     //pull review info
     var startingIndex = count * page;
-    var endingIndex = count * page + count;
-
 
     var sortParam = '';
     if (sort === "helpful") { sortParam = sort; };
     if (sort === "newest") { sortParam = "date"; };
-    if (sort === "relevant") { sortParam = "rating" }
-    var queryStr = 'SELECT * FROM reviewstest, reviews_photos WHERE reviews.product_id=? AND reviews.id>=? AND reviewstest.id<=? AND reviews_photos.review_id=reviews.id ORDER BY ?';
-    var queryParams = [product_id, startingIndex, endingIndex, sortParam];
-    db.query(queryStr, queryParams)
+    if (sort === "relevant") { sortParam = "helpfulness, date" }
+    var queryStr = `\
+    SELECT\
+    reviews.id AS review_id,\
+    reviews.rating, \
+    reviews.summary, \
+    reviews.recommend,\
+    reviews.response, \
+    reviews.body, \
+    reviews.date, \
+    reviews.reviewer_name, \
+    reviews.helpfulness,\
+    photo.photos\
+  FROM\
+    reviews \
+  LEFT JOIN \
+    (\
+      SELECT \
+        reviews_photos.review_id as review_id,\
+        jsonb_agg(json_build_object('id', reviews_photos.id, 'value', reviews_photos.url)) AS photos\
+      FROM \
+        reviews_photos\
+      GROUP BY \
+        reviews_photos.review_id \
+    ) AS photo \
+  ON \
+    reviews.id=photo.review_id\
+ 	WHERE\
+    reviews.product_id=${product_id}\
+	GROUP BY\
+    reviews.id,\
+	photo.photos\
+  ORDER BY ${sortParam}\
+  LIMIT ${count} OFFSET ${startingIndex}`;
+    //still have issue of dupe review enterites for multiple photos
+    db.query(queryStr)
       .then((results) => {
-        var reviews = [];
-
-        results.forEach((review) => {
-          //photos
-          var photos = [];
-          var reviewResult = {
-            "review_id": review.id,
-            "rating": review.rating,
-            "summary": review.summary,
-            "recommend": review.recommend,
-            "response": review.response,
-            "body": review.body,
-            "date": review.date,
-            "reviewer_name": review.reviewer_name,
-            "helpfulness": review.helpfulness,
-            "photos": photos
-          }
-          })
-
         var data = {
           "product": product_id,
           "page": page,
           "count": count,
-          "results": [
-            results
-          ]
+          "results": results
         }
         callback(null, data);
       })
@@ -57,37 +59,28 @@ module.exports = {
       })
   },
   getAllMeta: (product_id, callback) => {
-    var ratings = {};
-    var recommended = { 'TRUE': 0, 'FALSE': 0 };
-    var characteristics = {};
-    var data = {};
-
     //Find Ratings/Recommended
-    var queryStr = 'SELECT rating, COUNT(rating), recommended, COUNT(recommended) FROM reviews WHERE product_id=? GROUP BYORDER BY rating';
-    var queryParams = [product_id];
-    db.query(queryStr, queryParams)
+    //Find Characteristics
+    var queryStr = `\
+    SELECT\
+        reviews.product_id,
+        jsonb_object_agg(sumratings.rating, sumratings.count) AS ratings,\
+        jsonb_object_agg(countrecommend.recommend, countrecommend.count) AS recommended,\
+		jsonb_object_agg(charObj.name, json_build_object(charObj.id, charObj.value))\
+        FROM \
+		reviews, characteristics, characteristic_reviews, \
+		(SELECT reviews.rating, count(reviews.rating) AS count FROM reviews WHERE reviews.product_id=18078 GROUP BY reviews.rating) AS sumratings, \
+		(SELECT reviews.recommend, count(reviews.recommend) FROM reviews WHERE reviews.product_id=18078 GROUP BY reviews.recommend) AS countrecommend, \
+		(SELECT characteristics.id AS id, characteristics.name, AVG(characteristic_reviews.value) AS value FROM characteristics, characteristic_reviews, reviews WHERE characteristics.id=characteristic_reviews.characteristic_id AND characteristics.product_id=${product_id} GROUP BY characteristics.id) AS charObj \
+		WHERE characteristics.product_id=${product_id} \
+        AND reviews.product_id=${product_id} \
+        AND reviews.id=characteristic_reviews.review_id \
+        AND characteristics.id=characteristic_reviews.characteristic_id \
+        GROUP BY reviews.product_id
+    `;
+    db.query(queryStr)
       .then((results) => {
-        results.forEach((review) => {
-          if (!ratings.hasOwnProperty(review.rating)) { ratings[review.rating]++; }
-          else { ratings[review.rating] = 1; }
-
-          if (recommended.hasOwnProperty(review.recommend)) { recommended[review.recommended]++; }
-          else { recommended[review.recommend] = 1; }
-
-        })
-
-        //Find Characteristics
-        var queryStr = 'SELECT characteristics.product_id, characteristics.id, characteristic_reviews.characteristic_id, characteristics.name, AVG(characteristic_reviews.value)  FROM characteristics, characteristic_reviews WHERE characteristics.product_id=? AND characteristics.id=characteristic_reviews.characteristic_id GROUP BY characteristics.name';
-        var queryParams = [product_id];
-        db.query(queryStr, queryParams)
-          .then((results) => {
-            var characteristics = {};
-            results.forEach((queryObj) => {
-              characteristics[queryObj.name] = { id: queryObj.id, value: queryObj.value };
-            })
-            data = { product_id, ratings, recommended, characteristics }
-            callback(null, data)
-          })
+        callback(null, results)
       })
       .catch((err) => {
         console.log('getAllMeta error: ', err)
@@ -100,16 +93,21 @@ module.exports = {
     //use review_id to add photos and chars
 
     var columns = '(product_id, rating, summary, body, recommend, reviewer_name, reviewer_email, response)'
-    var queryStr = `INSERT INTO reviewstest ${columns} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-    var queryParams = [review.product_id, review.rating, review.summary, review.body, review.recommend, review.reviewer_name, review.reviewer_email, review.response];
-    db.query(queryStr, queryParams)
+    var queryStr = `INSERT INTO reviews ${columns} VALUES (${review.product_id}, ${review.rating}, ${review.summary}, ${review.body}, ${review.recommend}, ${review.reviewer_name}, ${review.reviewer_email}, ${review.response})`;
+    db.query(queryStr)
       .then((results) => {
+        var review_id = results.id;
         review.photos.forEach((photoObj) => {
-          var queryStr = `INSERT INTO reviews_photos (review_id, url) VALUES (?, ?)`;
-          var queryParams = [results.review_id, review];
+          var queryStr = `INSERT INTO reviews_photos (review_id, url) VALUES (${review_id}, ${photoObj.url})`;
+          db.query(queryStr)
+        })
+        var keys = Object.keys(review.characteristics);
+        keys.forEach((key) => {
+          var queryStr = `INSERT INTO characteristics_reviews(characteristic_id, review_id, value) VALUES (?, ?, ?);\
+          INSERT INTO characteristics(id, product_id) VALUES (?,?)`;
+          var queryParams = [key, review_id, review.characteristics[key].value, key, product_id];
           db.query(queryStr, queryParams)
         })
-        reviews.characteristics
         callback(null, results);
       })
       .catch((err) => {
@@ -117,9 +115,8 @@ module.exports = {
       })
   },
   updateHelpfulness: (review_id, callback) => {
-    var queryStr = 'UPDATE reviewstest SET helpfulness=helpfulness+1 WHERE id=?';
-    var queryParams = [review_id];
-    db.query(queryStr, queryParams)
+    var queryStr = `UPDATE reviews SET helpfulness=helpfulness+1 WHERE id=${review_id}`;
+    db.query(queryStr)
       .then((results) => {
         callback(null, results);
       })
@@ -128,9 +125,8 @@ module.exports = {
       })
   },
   reportReview: (review_id, callback) => {
-    var queryStr = 'UPDATE reviewstest SET reported=true WHERE id=?';
-    var queryParams = [review_id];
-    db.query(queryStr, queryParams)
+    var queryStr = `UPDATE reviews SET reported=true WHERE id=${review_id}`;
+    db.query(queryStr)
       .then((results) => {
         callback(null, results);
       })
