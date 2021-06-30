@@ -50,6 +50,12 @@ CREATE TABLE IF NOT EXISTS reviews_photos (
   FOREIGN KEY(review_id) REFERENCES reviews(id) ON DELETE CASCADE
 );
 
+CREATE TABLE char_agg as SELECT
+char.name, char.id, AVG(rc.value) AS value, product_id
+FROM characteristics AS char
+INNER JOIN char_reviews AS rc
+ON char.id = rc.char_id
+GROUP BY char.id
 
 
 COPY  reviews FROM  '/csvs/reviews.csv' WITH delimiter ','  CSV HEADER;

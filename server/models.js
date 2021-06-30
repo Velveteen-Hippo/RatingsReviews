@@ -6,14 +6,14 @@ module.exports = {
 
     var offset = '';
     //pull review info
-    if (page !== 1) {
+    if (page >= 1) {
       offset = `OFFSET ${count * (page - 1)};`
     }
 
     var sortParam = '';
-    if (sort === "helpful") { sortParam = "helpfulness"; };
-    if (sort === "newest") { sortParam = "date"; };
-    if (sort === "relevant") { sortParam = "helpfulness, date" }
+    if (sort === "helpful") { sortParam = "helpfulness DESC"; };
+    if (sort === "newest") { sortParam = "date DESC"; };
+    if (sort === "relevant") { sortParam = "helpfulness DESC, date DESC" }
     var queryStr = `\
     SELECT\
     reviews.id AS review_id,\
@@ -25,26 +25,13 @@ module.exports = {
     reviews.date, \
     reviews.reviewer_name, \
     reviews.helpfulness,\
-    photo.photos\
+    reviews.photos\
   FROM\
     reviews \
-  LEFT JOIN \
-    (\
-      SELECT \
-        reviews_photos.review_id as review_id,\
-        jsonb_agg(json_build_object('id', reviews_photos.id, 'value', reviews_photos.url)) AS photos\
-      FROM \
-        reviews_photos\
-      GROUP BY \
-        reviews_photos.review_id \
-    ) AS photo \
-  ON \
-    reviews.id=photo.review_id\
  	WHERE\
-    reviews.product_id=${product_id}\
+    reviews.product_id=${product_id} AND reviews.reported = false\
 	GROUP BY\
-    reviews.id,\
-	photo.photos\
+    reviews.id\
   ORDER BY ${sortParam}\
   LIMIT ${count} ${offset}`;
     //still have issue of dupe review enterites for multiple photos
@@ -75,7 +62,7 @@ module.exports = {
 		reviews, characteristics, characteristic_reviews, \
 		(SELECT reviews.rating, count(reviews.rating) AS count FROM reviews WHERE reviews.product_id=18078 GROUP BY reviews.rating) AS sumratings, \
 		(SELECT reviews.recommend, count(reviews.recommend) FROM reviews WHERE reviews.product_id=18078 GROUP BY reviews.recommend) AS countrecommend, \
-		(SELECT characteristics.id AS id, characteristics.name, AVG(characteristic_reviews.value) AS value FROM characteristics, characteristic_reviews, reviews WHERE characteristics.id=characteristic_reviews.characteristic_id AND characteristics.product_id=${product_id} GROUP BY characteristics.id) AS charObj \
+		(SELECT id, name, value FROM char_agg WHERE product_id=${product_id} GROUP BY id, name, value) AS charObj \
 		WHERE characteristics.product_id=${product_id} \
         AND reviews.product_id=${product_id} \
         AND reviews.id=characteristic_reviews.review_id \
@@ -95,24 +82,43 @@ module.exports = {
     //create review row
     //get review_id
     //use review_id to add photos and chars
-
-    var columns = '(product_id, rating, summary, body, recommend, reviewer_name, reviewer_email, response)'
-    var queryStr = `INSERT INTO reviews ${columns} VALUES (${review.product_id}, ${review.rating}, ${review.summary}, ${review.body}, ${review.recommend}, ${review.reviewer_name}, ${review.reviewer_email}, ${review.response}) RETURNING id`;
+    var columns = '(product_id, rating, summary, body, recommend, reported, reviewer_name, reviewer_email)'
+    var queryStr = `INSERT INTO reviews ${columns} VALUES (${review.product_id}, ${review.rating}, '${review.summary}', '${review.body}', '${review.recommend}', 'false', '${review.reviewer_name}', '${review.reviewer_email}') RETURNING id`;
+    console.log('1')
     db.query(queryStr)
       .then((results) => {
+        console.log('2')
         var review_id = results.rows[0].id;
-        review.photos.forEach((photoObj) => {
-          var queryStr = `INSERT INTO reviews_photos (review_id, url) VALUES (${review_id}, ${photoObj.url})`;
-          db.query(queryStr)
-        })
         var keys = Object.keys(review.characteristics);
-        keys.forEach((key) => {
-          var queryStr = `INSERT INTO characteristics_reviews(characteristic_id, review_id, value) VALUES ($1, $2, $3);\
-          INSERT INTO characteristics(id, product_id) VALUES (?,?)`;
-          var queryParams = [key, review_id, review.characteristics[key].value, key, product_id];
-          db.query(queryStr, queryParams)
-        })
-        callback(null, results);
+        if (keys.length > 0) {
+          console.log('3')
+          var values = [];
+          keys.forEach((key) => {
+            values.push(`(${key}, ${review_id}, ${review.characteristics[key]})`)
+          })
+          var queryStr = `INSERT INTO characteristic_reviews(characteristic_id, review_id, value) VALUES ` + values.join(',');
+          db.query(queryStr)
+            .then((result) => {
+              console.log('4')
+              var queryStr = `
+              UPDATE char_agg SET value = calc.value
+              FROM (SELECT
+                char.id, AVG(rc.value) AS value
+                FROM characteristics AS char
+                INNER JOIN characteristic_reviews AS rc
+                ON char.id = rc.characteristic_id
+                WHERE product_id = ${review.product_id}
+                GROUP BY char.id) AS calc
+              WHERE char_agg.id = calc.id;
+            `
+              db.query(queryStr)
+              console.log('S queries: ', result)
+              callback(null, result);
+
+            })
+        } else {
+          callback(null, results);
+        }
       })
       .catch((err) => {
         callback((err, null))
