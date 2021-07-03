@@ -71,3 +71,13 @@ ALTER TABLE  reviews
 ALTER SEQUENCE reviews_id_seq RESTART WITH 5774953;
 
 ALTER SEQUENCE characteristics_id_seq RESTART WITH 3347680;
+
+ALTER SEQUENCE reviews_photos_id_seq RESTART WITH 2742540;
+
+ALTER TABLE reviews DROP photos;
+ALTER TABLE reviews ADD photos jsonb;
+UPDATE reviews SET photos = urls.photos
+FROM (SELECT reviews_photos.review_id, jsonb_agg(json_build_object('id', reviews_photos.id, 'value', reviews_photos.url)) AS photos FROM reviews_photos GROUP BY reviews_photos.review_id) AS urls
+WHERE reviews.id = urls.review_id;
+
+pg_dump -U postgres -d ratings_reviews -f sdc_database.sql
