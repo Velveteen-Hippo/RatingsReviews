@@ -57,7 +57,7 @@ module.exports = {
         reviews.product_id,
         jsonb_object_agg(sumratings.rating, sumratings.count) AS ratings,\
         jsonb_object_agg(countrecommend.recommend, countrecommend.count) AS recommended,\
-		jsonb_object_agg(charObj.name, json_build_object(charObj.id, charObj.value)) AS characteristics\
+		jsonb_object_agg(charObj.name, json_build_object('id', charObj.id, 'value', charObj.value)) AS characteristics\
         FROM \
 		reviews, characteristics, characteristic_reviews, \
 		(SELECT reviews.rating, count(reviews.rating) AS count FROM reviews WHERE reviews.product_id=${product_id} GROUP BY reviews.rating) AS sumratings, \
@@ -103,7 +103,7 @@ module.exports = {
             ALTER TABLE reviews ADD photos jsonb;\
             UPDATE reviews SET photos = urls.photos\
             FROM (SELECT reviews_photos.review_id, jsonb_agg(json_build_object('id', reviews_photos.id, 'value', reviews_photos.url)) AS photos FROM reviews_photos GROUP BY reviews_photos.review_id) AS urls\
-            WHERE reviews.id = urls.review_id;
+            WHERE reviews.id = urls.review_id
             AND reviews.id = ${review_id};\
             `
               db.query(queryStr)

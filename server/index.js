@@ -3,7 +3,7 @@ const path = require('path');
 const axios = require('axios');
 const models = require('./models.js')
 
-const PORT = 3001;
+const PORT = 3000;
 
 var app = express();
 app.use(express.json());
